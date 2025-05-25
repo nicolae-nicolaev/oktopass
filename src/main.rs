@@ -9,7 +9,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let options = process_args(args);
     let password = Password::generate(options.length, options);
-    println!("{}", password);
+    println!("{}", password.password);
+    println!("{}", password.created);
 }
 
 fn process_args(args: Vec<String>) -> Options {

@@ -3,7 +3,12 @@ use crate::generators::{generate_letter, generate_number, generate_special};
 use rand::seq::IndexedRandom;
 use rand::seq::SliceRandom;
 
-pub struct Password;
+use chrono::{DateTime, Local};
+
+pub struct Password {
+    pub password: String,
+    pub created: DateTime<Local>,
+}
 
 pub struct Options {
     pub lowercase: bool,
@@ -14,10 +19,10 @@ pub struct Options {
 }
 
 impl Password {
-    pub fn generate(n: usize, options: Options) -> String {
+    pub fn generate(n: usize, options: Options) -> Password {
         let mut rng = rand::rng();
 
-        let mut password: Vec<char> = Vec::new();
+        let mut chars: Vec<char> = Vec::new();
         let mut pools: Vec<Box<dyn Fn() -> char>> = Vec::new();
 
         if options.lowercase {
@@ -40,13 +45,18 @@ impl Password {
             panic!("No options selected  for password generation.");
         }
 
-        while password.len() < n {
+        while chars.len() < n {
             let generator = pools.choose(&mut rng).unwrap();
-            password.push(generator());
+            chars.push(generator());
         }
 
-        password.shuffle(&mut rng);
+        chars.shuffle(&mut rng);
 
-        password.iter().collect()
+        let password = chars.iter().collect();
+
+        Password {
+            password: password,
+            created: Local::now(),
+        }
     }
 }

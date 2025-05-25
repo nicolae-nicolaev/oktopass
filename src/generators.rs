@@ -2,7 +2,7 @@ use rand::Rng;
 
 pub fn generate_letter(uppercase: bool) -> char {
     let mut rng = rand::rng();
-    let ascii_range = if uppercase {b'A'..=b'Z'} else {b'a'..=b'z'};
+    let ascii_range = if uppercase { b'A'..=b'Z' } else { b'a'..=b'z' };
 
     rng.random_range(ascii_range) as char
 }

@@ -10,6 +10,7 @@ pub struct Options {
     pub uppercase: bool,
     pub numbers: bool,
     pub specials: bool,
+    pub length: usize,
 }
 
 impl Password {

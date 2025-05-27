@@ -3,60 +3,72 @@ use crate::generators::{generate_letter, generate_number, generate_special};
 use rand::seq::IndexedRandom;
 use rand::seq::SliceRandom;
 
-use chrono::{DateTime, Local};
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Password {
     pub password: String,
-    pub created: DateTime<Local>,
+    pub name: String,
 }
 
-pub struct Options {
+pub struct Manager {
+    pub passwords: Vec<Password>,
+}
+
+pub struct PasswordRequest {
     pub lowercase: bool,
     pub uppercase: bool,
     pub numbers: bool,
     pub specials: bool,
     pub length: usize,
+    pub name: String,
 }
 
-impl Password {
-    pub fn generate(n: usize, options: Options) -> Password {
+impl Manager {
+    pub fn new() -> Self {
+        Self { passwords: Vec::new() }
+    }
+
+    pub fn generate(&mut self, request: PasswordRequest) {
         let mut rng = rand::rng();
 
         let mut chars: Vec<char> = Vec::new();
         let mut pools: Vec<Box<dyn Fn() -> char>> = Vec::new();
 
-        if options.lowercase {
+        if request.lowercase {
             pools.push(Box::new(|| generate_letter(false)));
         }
 
-        if options.uppercase {
+        if request.uppercase {
             pools.push(Box::new(|| generate_letter(true)));
         }
 
-        if options.numbers {
+        if request.numbers {
             pools.push(Box::new(|| generate_number()));
         }
 
-        if options.specials {
+        if request.specials {
             pools.push(Box::new(|| generate_special()));
         }
 
         if pools.is_empty() {
-            panic!("No options selected  for password generation.");
+            panic!("No options selected for password generation.");
         }
 
-        while chars.len() < n {
+        while chars.len() < request.length {
             let generator = pools.choose(&mut rng).unwrap();
             chars.push(generator());
         }
 
         chars.shuffle(&mut rng);
 
-        let password = chars.iter().collect();
+        let password_string = chars.iter().collect();
 
-        Password {
-            password: password,
-            created: Local::now(),
-        }
+        let password = Password {
+            password: password_string,
+            name: request.name,
+        };
+
+        self.passwords.push(password);
     }
 }

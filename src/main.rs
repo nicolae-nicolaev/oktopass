@@ -3,27 +3,37 @@ mod password;
 
 use std::env;
 
-use crate::password::{Password, Manager, PasswordRequest};
+use crate::password::{ Manager, PasswordRequest };
 
-fn main() {
+fn main() -> std::io::Result<()> {
     // TODO: load passwords file
 
     let args: Vec<String> = env::args().collect();
     let request = process_args(args);
 
-    let mut manager = Manager::new();
-    manager.generate(request);
-
-    for password in manager.passwords {
-        println!("{} : {}", password.name, password.password)   
+    if let Ok(mut manager)  = Manager::new("passwords.json") {
+        manager.read_passwords_file()?;
+        manager.generate(request)?;
+        manager.write_passwords_file()?;
+    } else {
+        eprintln!("Could not open password file.");
+        std::process::exit(1);
     }
 
-    // TODO: encrypt and save to file
-    // let serialized = serde_json::to_string(&password).unwrap();
-    // println!("{}", serialized);
+    Ok(())
 }
 
 fn process_args(args: Vec<String>) -> PasswordRequest {
+    if !args.iter().any(|arg| arg == "--name" || arg == "-N") {
+        eprintln!("Missing password name. Use --name or -N flag followed by password name.");
+        std::process::exit(1);
+    }
+
+    if !args.iter().any(|arg| arg == "--length" || arg == "-L") {
+        eprintln!("Missing password length. Use --length or -L flag followd by password length.");
+        std::process::exit(1);
+    }
+
     // TODO: load defaults from config
     let mut request = PasswordRequest {
         lowercase: true,
@@ -35,7 +45,6 @@ fn process_args(args: Vec<String>) -> PasswordRequest {
     };
 
     let mut i = 0;
-
     while i < args.len() {
         match args[i].as_str() {
             "--no-specials" | "-s" => request.specials = false,

@@ -1,5 +1,9 @@
 use crate::generators::{generate_letter, generate_number, generate_special};
 
+use std::fs::{ File, OpenOptions };
+use std::io::{ Result, BufReader, Seek, SeekFrom };
+use std::io::prelude::*;
+
 use rand::seq::IndexedRandom;
 use rand::seq::SliceRandom;
 
@@ -13,6 +17,7 @@ pub struct Password {
 
 pub struct Manager {
     pub passwords: Vec<Password>,
+    pub passwords_file: File,
 }
 
 pub struct PasswordRequest {
@@ -25,11 +30,48 @@ pub struct PasswordRequest {
 }
 
 impl Manager {
-    pub fn new() -> Self {
-        Self { passwords: Vec::new() }
+    pub fn new(file_path: &str) -> Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(file_path)?;
+
+        Ok(Self {
+            passwords: Vec::new(),
+            passwords_file: file,
+        })
     }
 
-    pub fn generate(&mut self, request: PasswordRequest) {
+    pub fn read_passwords_file(&mut self) -> Result<()> {
+
+        // let passwords: Vec<Password> = serde_json::from_reader(reader)?;
+        let passwords: Vec<Password> = {
+            let metadata = self.passwords_file.metadata()?;
+            if metadata.len() == 0 {
+                vec![]
+            } else {
+                let reader = BufReader::new(&self.passwords_file);
+                serde_json::from_reader(reader)?
+            }
+        };
+
+        self.passwords = passwords;
+
+        Ok(())
+    }
+
+    pub fn write_passwords_file(&mut self) -> Result<()> {
+        self.passwords_file.set_len(0)?;
+        self.passwords_file.seek(SeekFrom::Start(0))?;
+
+        let serialized = serde_json::to_string_pretty(&self.passwords).unwrap();
+        self.passwords_file.write_all(serialized.as_bytes())?;
+
+        Ok(())
+    }
+
+    pub fn generate(&mut self, request: PasswordRequest) -> Result<()> {
         let mut rng = rand::rng();
 
         let mut chars: Vec<char> = Vec::new();
@@ -70,5 +112,7 @@ impl Manager {
         };
 
         self.passwords.push(password);
+
+        Ok(())
     }
 }

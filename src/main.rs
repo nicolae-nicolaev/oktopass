@@ -1,3 +1,4 @@
+mod encryption;
 mod generators;
 mod password;
 
@@ -78,6 +79,8 @@ fn process_args(args: Vec<String>) -> PasswordRequest {
                     eprintln!("Missing length after {}", args[i]);
                     std::process::exit(1);
                 }
+            },
+            "--vault" | "-V" => {
             }
             &_ => (),
         }

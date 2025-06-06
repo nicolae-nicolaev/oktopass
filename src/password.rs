@@ -44,8 +44,6 @@ impl Manager {
     }
 
     pub fn read_passwords_file(&mut self) -> Result<()> {
-
-        // let passwords: Vec<Password> = serde_json::from_reader(reader)?;
         let passwords: Vec<Password> = {
             let metadata = self.passwords_file.metadata()?;
             if metadata.len() == 0 {

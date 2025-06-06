@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+aes = "0.8.4"
+aes-gcm = "0.10.3"
+argon2 = "0.5.3"
+base64 = "0.22.1"
 chrono = "0.4.41"
 rand = "0.9.1"
 rand-extra = "0.1.0"

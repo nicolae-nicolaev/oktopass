@@ -14,7 +14,7 @@ pub struct Vault {
     #[serde(serialize_with = "serialize_salt", deserialize_with= "deserialize_salt")]
     salt: SaltString,
     nonce: String,
-    password_hash: String,
+    master_password_hash: String,
     data: String,
 }
 
@@ -22,14 +22,14 @@ impl Vault {
     pub fn new(name: &str, password: &str) -> Result<Self, Error> {
         let salt = SaltString::generate(&mut OsRng);
         let nonce = generate_secret_b64::<12>();
-        let password_hash = derive_key(password, &salt)?;
+        let master_password_hash = derive_key(password, &salt)?;
         Ok(Self {
             proto: String::from("OKTP"),
             version: 1,
             name: name.to_string(),
             salt,
             nonce,
-            password_hash,
+            master_password_hash,
             data: String::from(""),
         })
     }
@@ -44,19 +44,19 @@ pub fn derive_key(master_password: &str, salt: &SaltString) -> Result<String, Er
     Ok(password_hash)
 }
 
-fn generate_secret_b64<const N: usize>() -> String {
+pub fn generate_secret_b64<const N: usize>() -> String {
     let mut salt = [0u8; N];
     rand::fill(&mut salt);
 
     general_purpose::STANDARD.encode(salt)
 }
 
-fn serialize_salt<S>(salt: &SaltString, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_salt<S>(salt: &SaltString, serializer: S) -> Result<S::Ok, S::Error>
     where S: serde::Serializer, {
         serializer.serialize_str(salt.as_str())
 }
 
-fn deserialize_salt<'de, D>(deserializer: D) -> Result<SaltString, D::Error>
+pub fn deserialize_salt<'de, D>(deserializer: D) -> Result<SaltString, D::Error>
     where D: serde::Deserializer<'de>, {
         let salt = String::deserialize(deserializer)?;
         SaltString::new(&salt).map_err(serde::de::Error::custom)

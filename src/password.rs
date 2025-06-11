@@ -1,75 +1,147 @@
-use crate::generators::{generate_letter, generate_number, generate_special};
+use crate::generators::{ generate_letter, generate_number, generate_special };
+use crate::encryption::{ serialize_salt, deserialize_salt, generate_secret_b64, derive_key };
+use crate::errors::{ VaultInitError };
 
 use std::fs::{ File, OpenOptions };
-use std::io::{ Result, BufReader, Seek, SeekFrom };
+use std::io::{ BufReader, Seek, SeekFrom };
 use std::io::prelude::*;
+
+use argon2::{ password_hash::{
+    rand_core::OsRng,
+    SaltString,
+    Error
+}};
 
 use rand::seq::IndexedRandom;
 use rand::seq::SliceRandom;
 
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize, Deserializer };
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Password {
-    pub password: String,
-    pub name: String,
+#[derive(Serialize, Deserialize)]
+pub struct VaultData {
+    proto: String,
+    version: u8,
+    name: String,
+    #[serde(serialize_with = "serialize_salt", deserialize_with= "deserialize_salt")]
+    salt: SaltString,
+    nonce: String,
+    master_password_hash: String,
+    data: String,
+
 }
 
-pub struct Manager {
-    pub passwords: Vec<Password>,
-    pub passwords_file: File,
+#[derive(Serialize)]
+pub struct Vault {
+    proto: String,
+    version: u8,
+    name: String,
+    password_manager: Manager,
+    #[serde(skip_serializing)]
+    vault_file: File,
+    #[serde(serialize_with = "serialize_salt", deserialize_with= "deserialize_salt")]
+    salt: SaltString,
+    nonce: String,
+    master_password_hash: String,
+    data: String,
 }
 
-pub struct PasswordRequest {
-    pub lowercase: bool,
-    pub uppercase: bool,
-    pub numbers: bool,
-    pub specials: bool,
-    pub length: usize,
-    pub name: String,
-}
+impl Vault {
+    pub fn new(name: &str, password: &str) -> Result<Self, VaultInitError> {
+        let salt = SaltString::generate(&mut OsRng);
+        let nonce = generate_secret_b64::<12>();
+        let master_password_hash = derive_key(password, &salt)
+            .map_err(|e| VaultInitError::new(format!("Vault initialization failed: {}", e)))?;
 
-impl Manager {
-    pub fn new(file_path: &str) -> Result<Self> {
-        let file = OpenOptions::new()
+        let filename = format!("{}.okv", name);
+        let vault_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(file_path)?;
+            .open(&filename)?;
 
         Ok(Self {
-            passwords: Vec::new(),
-            passwords_file: file,
+            proto: String::from("OKTP"),
+            version: 1,
+            name: name.to_string(),
+            password_manager: Manager::default(),
+            vault_file,
+            salt,
+            nonce,
+            master_password_hash,
+            data: String::from(""),
         })
     }
 
-    pub fn read_passwords_file(&mut self) -> Result<()> {
-        let passwords: Vec<Password> = {
-            let metadata = self.passwords_file.metadata()?;
-            if metadata.len() == 0 {
-                vec![]
-            } else {
-                let reader = BufReader::new(&self.passwords_file);
-                serde_json::from_reader(reader)?
-            }
+    pub fn add_password(&mut self, name: String, password: String) {
+        // TODO: return Result<>
+        let new_password = Password {
+            name,
+            password,
         };
+        self.password_manager.add_password(new_password);
+    }
 
-        self.passwords = passwords;
+    pub fn generate_password(&mut self, password_request: PasswordRequest) -> Result<(), std::io::Error> {
+        self.password_manager.generate_password(password_request)?;
 
         Ok(())
     }
 
-    pub fn write_passwords_file(&mut self) -> Result<()> {
-        self.passwords_file.set_len(0)?;
-        self.passwords_file.seek(SeekFrom::Start(0))?;
+//    pub fn persist(&mut self) -> Result<()> {
+//    }
+}
 
-        let serialized = serde_json::to_string_pretty(&self.passwords).unwrap();
-        self.passwords_file.write_all(serialized.as_bytes())?;
+impl<'de> Deserialize<'de> for Vault {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de>, {
+        let data = VaultData::deserialize(deserializer)?;
 
-        Ok(())
+        let filename = format!("{}.okv", data.name);
+
+        let vault_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&filename)
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(Vault {
+            proto: data.proto,
+            version: data.version,
+            name: data.name,
+            salt: data.salt,
+            nonce: data.nonce,
+            master_password_hash: data.master_password_hash,
+            data: data.data,
+            vault_file,
+            password_manager: Manager::default(),
+        })
+    }
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct Manager {
+    pub passwords: Vec<Password>,
+}
+
+impl Manager {
+    fn new() -> Self {
+        Self {
+            passwords: Vec::new(),
+        }
     }
 
-    pub fn generate(&mut self, request: PasswordRequest) -> Result<()> {
+    fn default() -> Self {
+        Self {
+            passwords: vec![]
+        }
+    }
+
+    fn add_password(&mut self, password: Password) {
+        // TODO: return Result<>
+        self.passwords.push(password);
+    }
+
+    fn generate_password(&mut self, request: PasswordRequest) -> Result<(), std::io::Error> {
         let mut rng = rand::rng();
 
         let mut chars: Vec<char> = Vec::new();
@@ -114,3 +186,20 @@ impl Manager {
         Ok(())
     }
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Password {
+    pub password: String,
+    pub name: String,
+}
+
+pub struct PasswordRequest {
+    pub lowercase: bool,
+    pub uppercase: bool,
+    pub numbers: bool,
+    pub specials: bool,
+    pub length: usize,
+    pub name: String,
+}
+
+

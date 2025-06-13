@@ -4,12 +4,11 @@ use crate::errors::{ VaultInitError };
 
 use std::fs::{ File, OpenOptions };
 use std::io::{ BufReader, Seek, SeekFrom };
-use std::io::prelude::*;
+use std::convert::TryFrom;
 
 use argon2::{ password_hash::{
     rand_core::OsRng,
     SaltString,
-    Error
 }};
 
 use rand::seq::IndexedRandom;
@@ -22,7 +21,7 @@ pub struct VaultData {
     proto: String,
     version: u8,
     name: String,
-    #[serde(serialize_with = "serialize_salt", deserialize_with= "deserialize_salt")]
+    #[serde(serialize_with="serialize_salt", deserialize_with="deserialize_salt")]
     salt: SaltString,
     nonce: String,
     master_password_hash: String,
@@ -30,15 +29,12 @@ pub struct VaultData {
 
 }
 
-#[derive(Serialize)]
 pub struct Vault {
     proto: String,
     version: u8,
     name: String,
     password_manager: Manager,
-    #[serde(skip_serializing)]
     vault_file: File,
-    #[serde(serialize_with = "serialize_salt", deserialize_with= "deserialize_salt")]
     salt: SaltString,
     nonce: String,
     master_password_hash: String,
@@ -46,18 +42,15 @@ pub struct Vault {
 }
 
 impl Vault {
+    const DEFAULT_FILE_PATH: &str = "~/.oktopass";
+
     pub fn new(name: &str, password: &str) -> Result<Self, VaultInitError> {
         let salt = SaltString::generate(&mut OsRng);
         let nonce = generate_secret_b64::<12>();
         let master_password_hash = derive_key(password, &salt)
             .map_err(|e| VaultInitError::new(format!("Vault initialization failed: {}", e)))?;
 
-        let filename = format!("{}.okv", name);
-        let vault_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&filename)?;
+        let vault_file = Self::get_vault_file(name)?;
 
         Ok(Self {
             proto: String::from("OKTP"),
@@ -72,8 +65,23 @@ impl Vault {
         })
     }
 
+    pub fn load_from_vault_file(name: &str) -> Result<Self, VaultInitError> {
+        let vault_file = OpenOptions::new()
+            .read(true)
+            .open(&Self::get_vault_file_path(name))?;
+
+        let vault_data: VaultData = {
+            let reader = BufReader::new(&vault_file);
+            serde_json::from_reader(reader)
+                .map_err(|e| VaultInitError::new(format!("Could not load vault from file: {}", e)))?
+        };
+
+        let vault = Vault::try_from(vault_data)?;
+
+        Ok(vault)
+    }
+
     pub fn add_password(&mut self, name: String, password: String) {
-        // TODO: return Result<>
         let new_password = Password {
             name,
             password,
@@ -87,31 +95,36 @@ impl Vault {
         Ok(())
     }
 
-//    pub fn persist(&mut self) -> Result<()> {
-//    }
-}
-
-impl<'de> Deserialize<'de> for Vault {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de>, {
-        let data = VaultData::deserialize(deserializer)?;
-
-        let filename = format!("{}.okv", data.name);
-
+    fn get_vault_file(name: &str) -> Result<File, VaultInitError> {
         let vault_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(&filename)
-            .map_err(serde::de::Error::custom)?;
+            .open(&Self::get_vault_file_path(name))?;
+
+        Ok(vault_file)
+    }
+
+    fn get_vault_file_path(name: &str) -> String {
+        format!("{}/{}.okv", Self::DEFAULT_FILE_PATH, name)
+    }
+}
+
+impl TryFrom<VaultData> for Vault {
+    type Error = VaultInitError;
+
+    fn try_from(vd: VaultData) -> Result<Self, Self::Error> {
+
+        let vault_file = Self::get_vault_file(vd.name.as_str())?;
 
         Ok(Vault {
-            proto: data.proto,
-            version: data.version,
-            name: data.name,
-            salt: data.salt,
-            nonce: data.nonce,
-            master_password_hash: data.master_password_hash,
-            data: data.data,
+            proto: vd.proto,
+            version: vd.version,
+            name: vd.name,
+            salt: vd.salt,
+            nonce: vd.nonce,
+            master_password_hash: vd.master_password_hash,
+            data: vd.data,
             vault_file,
             password_manager: Manager::default(),
         })
@@ -202,4 +215,52 @@ pub struct PasswordRequest {
     pub name: String,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    #[test]
+    fn create_vault() {
+        let vault_name = "Default";
+        let password = "R@nd0MP@sSw0Rd";
+        let vault = Vault::new(vault_name, password).unwrap();
+        let expected_password_hash = derive_key(password, &vault.salt).unwrap();
+
+        assert_eq!(vault.proto, "OKTP");
+        assert_eq!(vault.version, 1);
+        assert_eq!(vault.name, vault_name);
+        assert_eq!(vault.master_password_hash, expected_password_hash);
+        assert_eq!(vault.password_manager.passwords.len(), 0);
+    }
+
+    #[test]
+    fn create_vault_from_data() {
+        let salt = SaltString::generate(&mut OsRng);
+        let nonce = generate_secret_b64::<12>();
+
+        let password = "R@nd0MP@sSw0Rd";
+        let master_password_hash = derive_key(&password, &salt).unwrap();
+
+        let name = "Default";
+
+        let data = "Data";
+
+        let vault_data =  VaultData {
+            proto: String::from("OKTP"),
+            version: 1,
+            name: name.to_string(),
+            data: String::from(data),
+            salt,
+            nonce,
+            master_password_hash,
+        };
+
+        let vault = Vault::try_from(vault_data).unwrap();
+
+        assert_eq!(vault.proto, "OKTP");
+        assert_eq!(vault.version, 1);
+        assert_eq!(vault.name, name);
+        assert_eq!(vault.data, data);
+
+    }
+}

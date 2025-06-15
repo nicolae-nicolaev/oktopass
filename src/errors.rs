@@ -24,3 +24,21 @@ impl fmt::Display for VaultInitError {
         write!(f, "Could not initialize vault")
     }
 }
+
+pub struct VaultPersistError {
+    message: String
+}
+
+impl VaultPersistError {
+    pub fn new(message: String) -> Self {
+        Self { message }
+    }
+}
+
+impl From<std::io::Error> for VaultPersistError {
+    fn from(e: std::io::Error) -> Self {
+        VaultPersistError {
+            message: format!("I/O error: {}", e),
+        }
+    }
+}

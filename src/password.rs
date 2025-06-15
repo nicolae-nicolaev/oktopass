@@ -1,6 +1,6 @@
 use crate::generators::{ generate_letter, generate_number, generate_special };
 use crate::encryption::{ serialize_salt, deserialize_salt, generate_secret_b64, derive_key };
-use crate::errors::{ VaultInitError };
+use crate::errors::{ VaultInitError, VaultPersistError };
 
 use std::fs::{ File, OpenOptions };
 use std::io::{ BufReader, Seek, SeekFrom };
@@ -10,6 +10,8 @@ use argon2::{ password_hash::{
     rand_core::OsRng,
     SaltString,
 }};
+
+use base64::{engine::general_purpose, Engine as _};
 
 use rand::seq::IndexedRandom;
 use rand::seq::SliceRandom;
@@ -24,7 +26,7 @@ pub struct VaultData {
     #[serde(serialize_with="serialize_salt", deserialize_with="deserialize_salt")]
     salt: SaltString,
     nonce: String,
-    master_password_hash: String,
+    master_password_hash_b64: String,
     data: String,
 
 }
@@ -37,7 +39,7 @@ pub struct Vault {
     vault_file: File,
     salt: SaltString,
     nonce: String,
-    master_password_hash: String,
+    master_password_hash_b64: String,
     data: String,
 }
 
@@ -50,6 +52,8 @@ impl Vault {
         let master_password_hash = derive_key(password, &salt)
             .map_err(|e| VaultInitError::new(format!("Vault initialization failed: {}", e)))?;
 
+        let master_password_hash_b64 = general_purpose::STANDARD.encode(master_password_hash);
+
         let vault_file = Self::get_vault_file(name)?;
 
         Ok(Self {
@@ -59,8 +63,8 @@ impl Vault {
             password_manager: Manager::default(),
             vault_file,
             salt,
-            nonce,
-            master_password_hash,
+            nonce: general_purpose::STANDARD.encode(nonce),
+            master_password_hash_b64,
             data: String::from(""),
         })
     }
@@ -80,6 +84,11 @@ impl Vault {
 
         Ok(vault)
     }
+
+//    pub fn save_vault(&self) -> Result<Self, VaultPersistError> {
+//        // TODO: implement
+//        Ok(())
+//    }
 
     pub fn add_password(&mut self, name: String, password: String) {
         let new_password = Password {
@@ -116,6 +125,7 @@ impl TryFrom<VaultData> for Vault {
     fn try_from(vd: VaultData) -> Result<Self, Self::Error> {
 
         let vault_file = Self::get_vault_file(vd.name.as_str())?;
+        // let passwords = vd.data
 
         Ok(Vault {
             proto: vd.proto,
@@ -123,7 +133,7 @@ impl TryFrom<VaultData> for Vault {
             name: vd.name,
             salt: vd.salt,
             nonce: vd.nonce,
-            master_password_hash: vd.master_password_hash,
+            master_password_hash_b64: vd.master_password_hash_b64,
             data: vd.data,
             vault_file,
             password_manager: Manager::default(),
@@ -150,7 +160,6 @@ impl Manager {
     }
 
     fn add_password(&mut self, password: Password) {
-        // TODO: return Result<>
         self.passwords.push(password);
     }
 

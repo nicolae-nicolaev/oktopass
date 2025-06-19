@@ -21,7 +21,7 @@ impl From<std::io::Error> for VaultInitError {
 
 impl fmt::Display for VaultInitError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Could not initialize vault")
+        write!(f, "VaultInitError: {}", self.message)
     }
 }
 
@@ -40,5 +40,31 @@ impl From<std::io::Error> for VaultPersistError {
         VaultPersistError {
             message: format!("I/O error: {}", e),
         }
+    }
+}
+
+pub struct VaultError {
+    message: String,
+}
+
+impl VaultError {
+    pub fn new(message: String) -> Self {
+        Self { 
+            message: format!("VaultError: {}", message),
+        }
+    }
+}
+
+impl From<std::io::Error> for VaultError {
+    fn from(e: std::io::Error) -> Self {
+        VaultError {
+            message: format!("I/O error: {}", e),
+        }
+    }
+}
+
+impl fmt::Display for VaultError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VaultError: {}", self.message)
     }
 }

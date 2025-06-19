@@ -1,6 +1,6 @@
 use crate::generators::{ generate_letter, generate_number, generate_special };
-use crate::encryption::{ serialize_salt, deserialize_salt, generate_secret_b64, derive_key };
-use crate::errors::{ VaultInitError, VaultPersistError };
+use crate::encryption::{ serialize_salt, deserialize_salt, generate_secret_b64, derive_key, decrypt_json_data };
+use crate::errors::{ VaultError, VaultInitError, VaultPersistError };
 
 use std::fs::{ File, OpenOptions };
 use std::io::{ BufReader, Seek, SeekFrom };
@@ -41,6 +41,7 @@ pub struct Vault {
     nonce: String,
     master_password_hash_b64: String,
     data: String,
+    locked: bool,
 }
 
 impl Vault {
@@ -66,13 +67,14 @@ impl Vault {
             nonce: general_purpose::STANDARD.encode(nonce),
             master_password_hash_b64,
             data: String::from(""),
+            locked: false,
         })
     }
 
-    pub fn load_from_vault_file(name: &str) -> Result<Self, VaultInitError> {
+    pub fn load_from_file(name: String, master_password: String) -> Result<Self, VaultInitError> {
         let vault_file = OpenOptions::new()
             .read(true)
-            .open(&Self::get_vault_file_path(name))?;
+            .open(&Self::get_vault_file_path(name.as_str()))?;
 
         let vault_data: VaultData = {
             let reader = BufReader::new(&vault_file);
@@ -85,10 +87,39 @@ impl Vault {
         Ok(vault)
     }
 
-//    pub fn save_vault(&self) -> Result<Self, VaultPersistError> {
-//        // TODO: implement
-//        Ok(())
-//    }
+    pub fn unlock(&mut self, master_password: String) -> Result<(), VaultError> {
+        let password_hash = derive_key(master_password.as_str(), &self.salt)
+            .map_err(|e| VaultError::new(format!("{}", e)))?;
+
+        let master_password_hash = general_purpose::STANDARD.decode(&self.master_password_hash_b64)
+            .map_err(|e| VaultError::new(format!("{}", e)))?;
+
+        if master_password_hash == password_hash {
+            self.locked = false;
+
+            if self.data.len() != 0 {
+                let cipher_data: &[u8] = &general_purpose::STANDARD.decode(&self.data)
+                    .map_err(|e| VaultError::new(format!("{}", e)))?;
+
+                let nonce_vec = general_purpose::STANDARD.decode(&self.nonce)
+                    .map_err(|e| VaultError::new(format!("{}", e)))?;
+
+                let nonce: &[u8; 12] = nonce_vec
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| VaultError::new("Nonce must be exactly 12 bytes!".to_string()))?;
+
+                let decrypted_data = decrypt_json_data(&password_hash, cipher_data, nonce);
+
+                let passwords: Vec<Password> = serde_json::from_str(&decrypted_data)
+                    .map_err(|_| VaultError::new("Could not deserialize password data".to_string()))?;
+
+                self.password_manager.passwords = passwords;
+            }
+        }
+
+        Ok(())
+    }
 
     pub fn add_password(&mut self, name: String, password: String) {
         let new_password = Password {
@@ -125,7 +156,6 @@ impl TryFrom<VaultData> for Vault {
     fn try_from(vd: VaultData) -> Result<Self, Self::Error> {
 
         let vault_file = Self::get_vault_file(vd.name.as_str())?;
-        // let passwords = vd.data
 
         Ok(Vault {
             proto: vd.proto,
@@ -137,6 +167,7 @@ impl TryFrom<VaultData> for Vault {
             data: vd.data,
             vault_file,
             password_manager: Manager::default(),
+            locked: true,
         })
     }
 }

@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove this
+
 use rand::Rng;
 
 pub fn generate_letter(uppercase: bool) -> char {

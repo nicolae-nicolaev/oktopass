@@ -1,18 +1,18 @@
+#![allow(dead_code)] // TODO: remove this
+
 use aes_gcm::{Aes256Gcm, Key, Nonce};
-use aes_gcm::aead::{Aead, AeadCore, KeyInit};
-use argon2::{Argon2, PasswordHasher, password_hash::{
-    rand_core::OsRng,
+use aes_gcm::aead::{Aead, KeyInit};
+use argon2::{Argon2, password_hash::{
     SaltString,
     Error,
 }};
-use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize};
 
 pub fn derive_key(master_password: &str, salt: &SaltString) -> Result<[u8; 32], Error> {
     let mut key = [0u8; 32];
 
     let argon2 = Argon2::default();
-    let password_hash = argon2
+    let _password_hash = argon2
         .hash_password_into(
             master_password.as_bytes(),
             salt.as_str().as_bytes(),
@@ -37,7 +37,7 @@ pub fn serialize_salt<S>(salt: &SaltString, serializer: S) -> Result<S::Ok, S::E
 pub fn deserialize_salt<'de, D>(deserializer: D) -> Result<SaltString, D::Error>
     where D: serde::Deserializer<'de>, {
         let salt = String::deserialize(deserializer)?;
-        SaltString::new(&salt).map_err(serde::de::Error::custom)
+        SaltString::from_b64(&salt).map_err(serde::de::Error::custom)
 }
 
 pub fn encrypt_json_data(key: &[u8; 32], plaintext: &[u8], nonce: &[u8; 12]) -> Vec<u8> {

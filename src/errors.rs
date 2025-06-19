@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove this
+
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -53,7 +55,7 @@ pub struct VaultError {
 
 impl VaultError {
     pub fn new(message: String) -> Self {
-        Self { 
+        Self {
             message: format!("VaultError: {}", message),
         }
     }

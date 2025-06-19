@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove this
+
 use crate::generators::{ generate_letter, generate_number, generate_special };
 use crate::encryption::{ serialize_salt, deserialize_salt, generate_secret_b64, derive_key, decrypt_json_data, encrypt_json_data };
 use crate::errors::{ VaultError, VaultInitError, VaultPersistError };
@@ -16,7 +18,7 @@ use base64::{engine::general_purpose, Engine as _};
 use rand::seq::IndexedRandom;
 use rand::seq::SliceRandom;
 
-use serde::{ Deserialize, Serialize, Deserializer };
+use serde::{ Deserialize, Serialize };
 
 #[derive(Serialize, Deserialize)]
 pub struct VaultData {
@@ -103,7 +105,7 @@ impl Vault {
         })
     }
 
-    pub fn load_from_file(name: String, master_password: String) -> Result<Self, VaultInitError> {
+    pub fn load_from_file(name: String) -> Result<Self, VaultInitError> {
         let vault_file = OpenOptions::new()
             .read(true)
             .open(&Self::get_vault_file_path(name.as_str()))?;

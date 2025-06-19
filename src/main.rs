@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove this
+
 mod encryption;
 mod errors;
 mod generators;

@@ -1,5 +1,5 @@
 use crate::generators::{ generate_letter, generate_number, generate_special };
-use crate::encryption::{ serialize_salt, deserialize_salt, generate_secret_b64, derive_key, decrypt_json_data };
+use crate::encryption::{ serialize_salt, deserialize_salt, generate_secret_b64, derive_key, decrypt_json_data, encrypt_json_data };
 use crate::errors::{ VaultError, VaultInitError, VaultPersistError };
 
 use std::fs::{ File, OpenOptions };
@@ -29,6 +29,38 @@ pub struct VaultData {
     master_password_hash_b64: String,
     data: String,
 
+}
+
+impl TryFrom<Vault> for VaultData {
+    type Error = VaultPersistError;
+
+
+    fn try_from(vault: Vault) -> Result<Self, Self::Error> {
+        let passwords = &vault.password_manager.passwords;
+
+        let passwords_json = serde_json::to_string(&passwords)
+            .map_err(|e| VaultPersistError::new(format!("{}", e)))?;
+
+        let master_password_hash = vault.get_password_hash_u8()
+            .map_err(|e| VaultPersistError::new(format!("{}", e)))?;
+
+        let nonce = vault.get_nonce_u8()
+            .map_err(|e| VaultPersistError::new(format!("{}", e)))?;
+
+        let passwords_json_cipher = encrypt_json_data(&master_password_hash, &passwords_json.into_bytes(), &nonce);
+
+        let passwords_json_cipher_b64 = general_purpose::STANDARD.encode(passwords_json_cipher);
+
+        Ok(Self {
+            proto: vault.proto,
+            version: vault.version,
+            name: vault.name,
+            salt: vault.salt,
+            nonce: vault.nonce,
+            master_password_hash_b64: vault.master_password_hash_b64,
+            data: passwords_json_cipher_b64,
+        })
+    }
 }
 
 pub struct Vault {
@@ -101,15 +133,9 @@ impl Vault {
                 let cipher_data: &[u8] = &general_purpose::STANDARD.decode(&self.data)
                     .map_err(|e| VaultError::new(format!("{}", e)))?;
 
-                let nonce_vec = general_purpose::STANDARD.decode(&self.nonce)
-                    .map_err(|e| VaultError::new(format!("{}", e)))?;
+                let nonce = self.get_nonce_u8()?;
 
-                let nonce: &[u8; 12] = nonce_vec
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| VaultError::new("Nonce must be exactly 12 bytes!".to_string()))?;
-
-                let decrypted_data = decrypt_json_data(&password_hash, cipher_data, nonce);
+                let decrypted_data = decrypt_json_data(&password_hash, cipher_data, &nonce);
 
                 let passwords: Vec<Password> = serde_json::from_str(&decrypted_data)
                     .map_err(|_| VaultError::new("Could not deserialize password data".to_string()))?;
@@ -119,6 +145,10 @@ impl Vault {
         }
 
         Ok(())
+    }
+
+    pub fn save() -> Result<(), VaultPersistError> {
+        todo!("Implement this")
     }
 
     pub fn add_password(&mut self, name: String, password: String) {
@@ -133,6 +163,30 @@ impl Vault {
         self.password_manager.generate_password(password_request)?;
 
         Ok(())
+    }
+
+    fn get_password_hash_u8(&self) -> Result<[u8; 32], VaultError> {
+        let password_hash_vec = general_purpose::STANDARD.decode(&self.master_password_hash_b64)
+            .map_err(|e| VaultError::new(format!("{}", e)))?;
+
+        let password_hash: [u8; 32] = password_hash_vec
+            .as_slice()
+            .try_into()
+            .map_err(|_| VaultError::new("Password hash must be exactly 32 bytes!".to_string()))?;
+
+        Ok(password_hash)
+    }
+
+    fn get_nonce_u8(&self) -> Result<[u8; 12], VaultError> {
+        let nonce_vec = general_purpose::STANDARD.decode(&self.nonce)
+            .map_err(|e| VaultError::new(format!("{}", e)))?;
+
+        let nonce: [u8; 12] = nonce_vec
+            .as_slice()
+            .try_into()
+            .map_err(|_| VaultError::new("Nonce must be exactly 12 bytes!".to_string()))?;
+
+        Ok(nonce)
     }
 
     fn get_vault_file(name: &str) -> Result<File, VaultInitError> {

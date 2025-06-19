@@ -7,7 +7,9 @@ pub struct VaultInitError {
 
 impl VaultInitError {
     pub fn new(message: String) -> Self {
-        Self { message }
+        Self {
+            message: format!("VaultInitError: {}", message),
+        }
     }
 }
 
@@ -31,7 +33,9 @@ pub struct VaultPersistError {
 
 impl VaultPersistError {
     pub fn new(message: String) -> Self {
-        Self { message }
+        Self {
+            message: format!("VaultPersistError: {}", message),
+        }
     }
 }
 

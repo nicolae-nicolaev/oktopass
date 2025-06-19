@@ -56,6 +56,9 @@ mod tests {
     use std::io::Read;
     use std::str::Bytes;
     use std::string::ToString;
+
+    use argon2::password_hash::rand_core::OsRng;
+
     use super::*;
 
     #[test]

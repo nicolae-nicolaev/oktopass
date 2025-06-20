@@ -5,7 +5,7 @@ use crate::encryption::{ serialize_salt, deserialize_salt, generate_secret_b64, 
 use crate::errors::{ VaultError, VaultInitError, VaultPersistError };
 
 use std::fs::{ File, OpenOptions };
-use std::io::{ BufReader, Seek, SeekFrom };
+use std::io::{ Write, BufReader, Seek, SeekFrom };
 use std::convert::TryFrom;
 
 use argon2::{ password_hash::{
@@ -33,11 +33,11 @@ pub struct VaultData {
 
 }
 
-impl TryFrom<Vault> for VaultData {
+impl TryFrom<&Vault> for VaultData {
     type Error = VaultPersistError;
 
 
-    fn try_from(vault: Vault) -> Result<Self, Self::Error> {
+    fn try_from(vault: &Vault) -> Result<Self, Self::Error> {
         let passwords = &vault.password_manager.passwords;
 
         let passwords_json = serde_json::to_string(&passwords)
@@ -54,12 +54,12 @@ impl TryFrom<Vault> for VaultData {
         let passwords_json_cipher_b64 = general_purpose::STANDARD.encode(passwords_json_cipher);
 
         Ok(Self {
-            proto: vault.proto,
+            proto: vault.proto.clone(),
             version: vault.version,
-            name: vault.name,
-            salt: vault.salt,
-            nonce: vault.nonce,
-            master_password_hash_b64: vault.master_password_hash_b64,
+            name: vault.name.clone(),
+            salt: vault.salt.clone(),
+            nonce: vault.nonce.clone(),
+            master_password_hash_b64: vault.master_password_hash_b64.clone(),
             data: passwords_json_cipher_b64,
         })
     }
@@ -89,7 +89,8 @@ impl Vault {
 
         let master_password_hash_b64 = general_purpose::STANDARD.encode(master_password_hash);
 
-        let vault_file = Self::get_vault_file(name)?;
+        let vault_file = Self::get_vault_file(name)
+            .map_err(|_| VaultInitError::new(format!("Could not load {} vault file", name)))?;
 
         Ok(Self {
             proto: String::from("OKTP"),
@@ -149,22 +150,55 @@ impl Vault {
         Ok(())
     }
 
-    pub fn save() -> Result<(), VaultPersistError> {
-        todo!("Implement this")
-    }
+    pub fn save(&self) -> Result<(), VaultPersistError> {
+        let vault_data = VaultData::try_from(self)?;
 
-    pub fn add_password(&mut self, name: String, password: String) {
-        let new_password = Password {
-            name,
-            password,
-        };
-        self.password_manager.add_password(new_password);
-    }
+        let vault_json = serde_json::to_string_pretty(&vault_data)
+            .map_err(|_| VaultPersistError::new("Could not serialize vault".to_string()))?;
 
-    pub fn generate_password(&mut self, password_request: PasswordRequest) -> Result<(), std::io::Error> {
-        self.password_manager.generate_password(password_request)?;
+        let mut vault_file = Self::get_vault_file(&self.name)
+            .map_err(|_| VaultPersistError::new(format!("Could not get {} vault file", &self.name)))?;
+
+        vault_file.set_len(0)?;
+        vault_file.seek(SeekFrom::Start(0))?;
+
+        vault_file.write_all(vault_json.as_bytes())?;
 
         Ok(())
+    }
+
+    pub fn get_passwords(&self) -> Result<&[Password], VaultError> {
+        if self.locked {
+            Err(VaultError::new("Vault is locked. Unlock it first.".to_string()))
+        } else {
+            Ok(&self.password_manager.passwords)
+        }
+    }
+
+    pub fn add_password(&mut self, name: String, password: String) -> Result<(), VaultError> {
+        if self.locked {
+            Err(VaultError::new("Cannot add password to vault. Vault is locked.".to_string()))
+        } else {
+            let new_password = Password {
+                name,
+                password,
+            };
+
+            self.password_manager.add_password(new_password);
+
+            Ok(())
+        }
+    }
+
+    pub fn generate_password(&mut self, password_request: PasswordRequest) -> Result<(), VaultError> {
+        if self.locked {
+            Err(VaultError::new("Cannot generate a password. Vault is locked.".to_string()))
+        } else {
+            self.password_manager.generate_password(password_request)
+                .map_err(|e| VaultError::new(format!("Could not generate password: {}", e)))?;
+
+            Ok(())
+        }
     }
 
     fn get_password_hash_u8(&self) -> Result<[u8; 32], VaultError> {
@@ -191,7 +225,13 @@ impl Vault {
         Ok(nonce)
     }
 
-    fn get_vault_file(name: &str) -> Result<File, VaultInitError> {
+    fn get_vault_file(name: &str) -> Result<File, VaultError> {
+        let path = Self::get_vault_file_path(name);
+
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
         let vault_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -202,7 +242,8 @@ impl Vault {
     }
 
     fn get_vault_file_path(name: &str) -> String {
-        format!("{}/{}.okv", Self::DEFAULT_FILE_PATH, name)
+        let home_dir = dirs::home_dir().expect("Could not determine home directory.");
+        format!("{}/.oktopass/{}.okv", home_dir.display(), name)
     }
 }
 
@@ -211,7 +252,8 @@ impl TryFrom<VaultData> for Vault {
 
     fn try_from(vd: VaultData) -> Result<Self, Self::Error> {
 
-        let vault_file = Self::get_vault_file(vd.name.as_str())?;
+        let vault_file = Self::get_vault_file(vd.name.as_str())
+            .map_err(|_| VaultInitError::new(format!("Could not load {} vault file", &vd.name)))?;
 
         Ok(Vault {
             proto: vd.proto,
@@ -297,7 +339,7 @@ impl Manager {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Password {
+pub struct Password {
     pub password: String,
     pub name: String,
 }

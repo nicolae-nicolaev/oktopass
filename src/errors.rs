@@ -29,6 +29,7 @@ impl fmt::Display for VaultInitError {
     }
 }
 
+#[derive(Debug)]
 pub struct VaultPersistError {
     message: String
 }
@@ -49,6 +50,13 @@ impl From<std::io::Error> for VaultPersistError {
     }
 }
 
+impl fmt::Display for VaultPersistError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VaultPersistError: {}", self.message)
+    }
+}
+
+#[derive(Debug)]
 pub struct VaultError {
     message: String,
 }

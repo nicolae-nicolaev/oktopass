@@ -1,13 +1,13 @@
-#![allow(dead_code)] // TODO: remove this
-
 mod encryption;
 mod errors;
 mod generators;
 mod password;
 
+use std::error::Error;
 use std::process;
 
 use clap::Parser;
+use copypasta::{ClipboardContext, ClipboardProvider};
 use rpassword::prompt_password;
 
 use crate::password::Vault;
@@ -43,9 +43,12 @@ fn main() {
         }
     };
 
-    let password = match vault.unlock(master_password) {
+    match vault.unlock(master_password) {
         Ok(()) => match vault.get_password(&args.password) {
-            Some(pwd) => pwd,
+            Some(pwd) => {
+                copy_to_clipboard(&pwd.password).expect("Failed to copy to clipboard!");
+                println!("✅ Password copied to clipboard!")
+            }
             None => {
                 eprintln!("❗ Failed to retrieve password for {}", args.password);
                 process::exit(1);
@@ -59,6 +62,10 @@ fn main() {
             process::exit(1);
         }
     };
+}
 
-    println!("Password for {}: {}", &args.password, password.password);
+fn copy_to_clipboard(text: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let mut ctx = ClipboardContext::new()?;
+    ctx.set_contents(text.to_owned())?;
+    Ok(())
 }

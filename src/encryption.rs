@@ -1,23 +1,22 @@
 #![allow(dead_code)] // TODO: remove this
 
-use aes_gcm::{Aes256Gcm, Key, Nonce};
 use aes_gcm::aead::{Aead, KeyInit};
-use argon2::{Argon2, password_hash::{
-    SaltString,
-    Error,
-}};
-use serde::{Deserialize};
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use argon2::{
+    Argon2,
+    password_hash::{Error, SaltString},
+};
+use serde::Deserialize;
 
 pub fn derive_key(master_password: &str, salt: &SaltString) -> Result<[u8; 32], Error> {
     let mut key = [0u8; 32];
 
     let argon2 = Argon2::default();
-    let _password_hash = argon2
-        .hash_password_into(
-            master_password.as_bytes(),
-            salt.as_str().as_bytes(),
-            &mut key,
-        )?;
+    argon2.hash_password_into(
+        master_password.as_bytes(),
+        salt.as_str().as_bytes(),
+        &mut key,
+    )?;
 
     Ok(key)
 }
@@ -30,14 +29,18 @@ pub fn generate_secret_b64<const N: usize>() -> [u8; N] {
 }
 
 pub fn serialize_salt<S>(salt: &SaltString, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer, {
-        serializer.serialize_str(salt.as_str())
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(salt.as_str())
 }
 
 pub fn deserialize_salt<'de, D>(deserializer: D) -> Result<SaltString, D::Error>
-    where D: serde::Deserializer<'de>, {
-        let salt = String::deserialize(deserializer)?;
-        SaltString::from_b64(&salt).map_err(serde::de::Error::custom)
+where
+    D: serde::Deserializer<'de>,
+{
+    let salt = String::deserialize(deserializer)?;
+    SaltString::from_b64(&salt).map_err(serde::de::Error::custom)
 }
 
 pub fn encrypt_json_data(key: &[u8; 32], plaintext: &[u8], nonce: &[u8; 12]) -> Vec<u8> {
@@ -47,16 +50,14 @@ pub fn encrypt_json_data(key: &[u8; 32], plaintext: &[u8], nonce: &[u8; 12]) -> 
 
 pub fn decrypt_json_data(key: &[u8; 32], ciphertext: &[u8], nonce: &[u8; 12]) -> String {
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
-    let decrypted_bytes = cipher.decrypt(Nonce::from_slice(nonce), ciphertext).unwrap();
+    let decrypted_bytes = cipher
+        .decrypt(Nonce::from_slice(nonce), ciphertext)
+        .unwrap();
     String::from_utf8(decrypted_bytes).unwrap()
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
-    use std::str::Bytes;
-    use std::string::ToString;
-
     use argon2::password_hash::rand_core::OsRng;
 
     use super::*;

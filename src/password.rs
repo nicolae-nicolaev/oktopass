@@ -42,15 +42,15 @@ impl TryFrom<&Vault> for VaultData {
         let passwords = &vault.password_manager.passwords;
 
         let passwords_json = serde_json::to_string(&passwords)
-            .map_err(|e| VaultPersistError::new(format!("{}", e)))?;
+            .map_err(|e| VaultPersistError::new(format!("{e}")))?;
 
         let master_password_hash = vault
             .get_password_hash_u8()
-            .map_err(|e| VaultPersistError::new(format!("{}", e)))?;
+            .map_err(|e| VaultPersistError::new(format!("{e}")))?;
 
         let nonce = vault
             .get_nonce_u8()
-            .map_err(|e| VaultPersistError::new(format!("{}", e)))?;
+            .map_err(|e| VaultPersistError::new(format!("{e}")))?;
 
         let passwords_json_cipher =
             encrypt_json_data(&master_password_hash, &passwords_json.into_bytes(), &nonce);
@@ -72,7 +72,7 @@ impl TryFrom<&Vault> for VaultData {
 pub struct Vault {
     proto: String,
     version: u8,
-    name: String,
+    pub name: String,
     password_manager: Manager,
     vault_file: File,
     pub salt: SaltString,
@@ -89,12 +89,12 @@ impl Vault {
         let salt = SaltString::generate(&mut OsRng);
         let nonce = generate_secret_b64::<12>();
         let master_password_hash = derive_key(password, &salt)
-            .map_err(|e| VaultInitError::new(format!("Vault initialization failed: {}", e)))?;
+            .map_err(|e| VaultInitError::new(format!("Vault initialization failed: {e}")))?;
 
         let master_password_hash_b64 = general_purpose::STANDARD.encode(master_password_hash);
 
         let vault_file = Self::get_vault_file(name)
-            .map_err(|_| VaultInitError::new(format!("Could not load {} vault file", name)))?;
+            .map_err(|_| VaultInitError::new(format!("Could not load {name} vault file")))?;
 
         Ok(Self {
             proto: String::from("OKTP"),
@@ -110,16 +110,15 @@ impl Vault {
         })
     }
 
-    pub fn load_from_file(name: String) -> Result<Self, VaultInitError> {
+    pub fn load(name: &str) -> Result<Self, VaultInitError> {
         let vault_file = OpenOptions::new()
             .read(true)
-            .open(Self::get_vault_file_path(name.as_str()))?;
+            .open(Self::get_vault_file_path(name))?;
 
         let vault_data: VaultData = {
             let reader = BufReader::new(&vault_file);
-            serde_json::from_reader(reader).map_err(|e| {
-                VaultInitError::new(format!("Could not load vault from file: {}", e))
-            })?
+            serde_json::from_reader(reader)
+                .map_err(|e| VaultInitError::new(format!("Could not load vault from file: {e}")))?
         };
 
         let vault = Vault::try_from(vault_data)?;
@@ -127,13 +126,13 @@ impl Vault {
         Ok(vault)
     }
 
-    pub fn unlock(&mut self, master_password: String) -> Result<(), VaultError> {
-        let password_hash = derive_key(master_password.as_str(), &self.salt)
-            .map_err(|e| VaultError::new(format!("{}", e)))?;
+    pub fn unlock(&mut self, master_password: &str) -> Result<(), VaultError> {
+        let password_hash =
+            derive_key(master_password, &self.salt).map_err(|e| VaultError::new(format!("{e}")))?;
 
         let master_password_hash = general_purpose::STANDARD
             .decode(&self.master_password_hash_b64)
-            .map_err(|e| VaultError::new(format!("{}", e)))?;
+            .map_err(|e| VaultError::new(format!("{e}")))?;
 
         if master_password_hash == password_hash {
             self.locked = false;
@@ -141,7 +140,7 @@ impl Vault {
             if !self.data.is_empty() {
                 let cipher_data: &[u8] = &general_purpose::STANDARD
                     .decode(&self.data)
-                    .map_err(|e| VaultError::new(format!("{}", e)))?;
+                    .map_err(|e| VaultError::new(format!("{e}")))?;
 
                 let nonce = self.get_nonce_u8()?;
 
@@ -157,6 +156,23 @@ impl Vault {
         }
 
         Ok(())
+    }
+
+    pub fn add_password(&mut self, name: &str, password: &str) -> Result<(), VaultError> {
+        if self.locked {
+            Err(VaultError::new(
+                "Cannot add password to vault. Vault is locked.".to_string(),
+            ))
+        } else {
+            let new_password = Password {
+                name: name.to_string(),
+                password: password.to_string(),
+            };
+
+            self.password_manager.add_password(new_password);
+
+            Ok(())
+        }
     }
 
     pub fn save(&self) -> Result<(), VaultPersistError> {
@@ -193,20 +209,6 @@ impl Vault {
             .and_then(|passwords| passwords.iter().find(|p| p.name == name).cloned())
     }
 
-    pub fn add_password(&mut self, name: String, password: String) -> Result<(), VaultError> {
-        if self.locked {
-            Err(VaultError::new(
-                "Cannot add password to vault. Vault is locked.".to_string(),
-            ))
-        } else {
-            let new_password = Password { name, password };
-
-            self.password_manager.add_password(new_password);
-
-            Ok(())
-        }
-    }
-
     pub fn generate_password(
         &mut self,
         password_request: PasswordRequest,
@@ -218,7 +220,7 @@ impl Vault {
         } else {
             self.password_manager
                 .generate_password(password_request)
-                .map_err(|e| VaultError::new(format!("Could not generate password: {}", e)))?;
+                .map_err(|e| VaultError::new(format!("Could not generate password: {e}")))?;
 
             Ok(())
         }
@@ -227,7 +229,7 @@ impl Vault {
     fn get_password_hash_u8(&self) -> Result<[u8; 32], VaultError> {
         let password_hash_vec = general_purpose::STANDARD
             .decode(&self.master_password_hash_b64)
-            .map_err(|e| VaultError::new(format!("{}", e)))?;
+            .map_err(|e| VaultError::new(format!("{e}")))?;
 
         let password_hash: [u8; 32] = password_hash_vec
             .as_slice()
@@ -240,7 +242,7 @@ impl Vault {
     fn get_nonce_u8(&self) -> Result<[u8; 12], VaultError> {
         let nonce_vec = general_purpose::STANDARD
             .decode(&self.nonce)
-            .map_err(|e| VaultError::new(format!("{}", e)))?;
+            .map_err(|e| VaultError::new(format!("{e}")))?;
 
         let nonce: [u8; 12] = nonce_vec
             .as_slice()
@@ -261,7 +263,7 @@ impl Vault {
             .read(true)
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .open(Self::get_vault_file_path(name))?;
 
         Ok(vault_file)

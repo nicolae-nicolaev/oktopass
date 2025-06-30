@@ -5,11 +5,12 @@ mod password;
 
 use std::error::Error;
 use std::process;
+use std::io::{self, Write};
 
 use clap::{Parser, Subcommand};
 use rpassword::prompt_password;
 
-use crate::password::Vault;
+use crate::password::{Vault, PasswordRequest};
 
 #[derive(Parser, Debug)]
 #[command(name = "oktopass")]
@@ -25,20 +26,27 @@ enum Commands {
         #[arg(long)]
         name: String,
     },
-    AddPassword {
+    AddPass {
         #[arg(long)]
         vault_name: String,
 
         #[arg(long)]
         service: String,
     },
-    GetPassword {
+    GetPass {
         #[arg(long)]
         vault_name: String,
 
         #[arg(long)]
         service: String,
     },
+    GenPass {
+        #[arg(long)]
+        vault_name: String,
+
+        #[arg(long)]
+        service: String,
+    }
 }
 
 fn main() {
@@ -67,7 +75,7 @@ fn main() {
                 }
             }
         }
-        Commands::AddPassword {
+        Commands::AddPass {
             vault_name,
             service,
         } => {
@@ -108,7 +116,7 @@ fn main() {
                 }
             }
         }
-        Commands::GetPassword {
+        Commands::GetPass {
             vault_name,
             service,
         } => {
@@ -118,15 +126,42 @@ fn main() {
                 Ok(_) => match vault.get_password(&service) {
                     Some(pwd) => {
                         copy_to_clipboard(&pwd.password).expect("Failed to copy to clipboard!");
-                        println!("[✅] Password copied to clipboard!")
+                        println!("✅ Password copied to clipboard!")
                     }
                     None => {
-                        eprintln!("[❗] Failed to retrieve password for {service}");
+                        eprintln!("❗ Failed to retrieve password for {service}");
                         process::exit(1);
                     }
                 },
                 Err(err) => {
-                    eprintln!("[❗] Failed to retrieve password for '{service}': {err}",);
+                    eprintln!("❗ Failed to retrieve password for '{service}': {err}",);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Commands::GenPass {vault_name, service} => {
+            let mut vault = load_vault(&vault_name);
+            match vault.unlock(&request_password("Enter vault master password: ")) {
+                Ok(_) => {
+                    let options = prompt_password_options();
+                    match vault.generate_password(options) {
+                        Ok(_) => match vault.save() {
+                            Ok(_) => {
+                                println!("✅ Password successfully generated and vault saved!");
+                            },
+                            Err(err) => {
+                                eprintln!("❗ Failed to save vault: {err}");
+                                std::process::exit(1);
+                            }
+                        },
+                        Err(err) => {
+                            eprintln!("❗ Failed to generate password: {err}");
+                            std::process::exit(1);
+                        }
+                    }
+                },
+                Err(err) => {
+                    eprintln!("❗ Error unlocking vault: {err}");
                     std::process::exit(1);
                 }
             }
@@ -157,6 +192,48 @@ fn prompt_password_with_confirmation(prompt: &str, confirmation_prompt: &str) ->
         } else {
             eprintln!("❗ Passwords do not match. Try again.");
         }
+    }
+}
+
+
+
+fn prompt_password_options() -> PasswordRequest {
+    fn prompt_password_name() -> String {
+        print!("Enter password name (service): ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+
+        input.trim().to_string()
+    }
+
+    fn prompt_password_length() -> usize {
+        print!("Enter the desired password length (default 16): ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+
+        input.trim().parse().unwrap_or(16)
+    }
+
+    fn ask(prompt: &str) -> bool {
+        print!("{prompt} (y/n): ");
+        io::stdout().flush().unwrap();
+
+        let mut ans = String::new();
+        io::stdin().read_line(&mut ans).unwrap();
+        matches!(ans.trim().to_lowercase().as_str(), "y" | "yes")
+    }
+
+    PasswordRequest {
+        name: prompt_password_name(),
+        length: prompt_password_length(),
+        lowercase: ask("Include lowercase letters?"),
+        uppercase: ask("Include uppercase letters?"),
+        numbers:   ask("Include numbers?"),
+        specials:  ask("Include special characters?"),
     }
 }
 

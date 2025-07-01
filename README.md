@@ -84,4 +84,4 @@ You will be prompted to unlock the vault and provide password generation options
 ```bash
 git clone https://github.com/nicolae-nicolaev/oktopass.git
 cd oktopass
-cargo build --release
+./install.sh

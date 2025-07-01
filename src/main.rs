@@ -22,10 +22,11 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    NewVault {
+    AddVault {
         #[arg(short, long)]
         name: String,
     },
+    ShowVaults,
     AddPass {
         #[arg(short, long)]
         vault_name: String,
@@ -50,13 +51,17 @@ enum Commands {
         #[arg(short, long)]
         length: Option<usize>,
     },
+    ShowPass {
+        #[arg(short, long)]
+        vault_name: String,
+    },
 }
 
 fn main() {
     let args = Args::parse();
 
     match args.command {
-        Commands::NewVault { name } => {
+        Commands::AddVault { name } => {
             let master_password = prompt_password_with_confirmation(
                 "Set master password: ",
                 "Confirm master password: ",
@@ -78,6 +83,7 @@ fn main() {
                 }
             }
         }
+        Commands::ShowVaults => {}
         Commands::AddPass {
             vault_name,
             service,
@@ -178,7 +184,23 @@ fn main() {
                     }
                 }
                 Err(err) => {
-                    eprintln!("❗ Error unlocking vault: {err}");
+                    eprintln!("❗ Failed to unlock vault: {err}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Commands::ShowPass { vault_name } => {
+            let mut vault = load_vault(vault_name.as_str());
+            match vault.unlock(&request_password("Enter vault master password: ")) {
+                Ok(_) => {
+                    let passwords = vault
+                        .get_passwords_service_names()
+                        .expect("❗ Failed to retrieve passwords.");
+
+                    passwords.iter().for_each(|p| println!("🔹 {p}"));
+                }
+                Err(err) => {
+                    eprintln!("❗ Failed to unlock vault: {err}");
                     std::process::exit(1);
                 }
             }

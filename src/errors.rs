@@ -4,7 +4,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct VaultInitError {
-    message: String
+    message: String,
 }
 
 impl VaultInitError {
@@ -31,7 +31,7 @@ impl fmt::Display for VaultInitError {
 
 #[derive(Debug)]
 pub struct VaultPersistError {
-    message: String
+    message: String,
 }
 
 impl VaultPersistError {
@@ -58,7 +58,7 @@ impl fmt::Display for VaultPersistError {
 
 #[derive(Debug)]
 pub struct VaultError {
-    message: String,
+    pub message: String,
 }
 
 impl VaultError {

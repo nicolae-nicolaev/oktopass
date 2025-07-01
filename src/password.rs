@@ -209,6 +209,21 @@ impl Vault {
             .and_then(|passwords| passwords.iter().find(|p| p.name == name).cloned())
     }
 
+    pub fn get_passwords_service_names(&self) -> Result<Vec<String>, VaultError> {
+        let mut passwords = vec![];
+
+        match self.get_passwords() {
+            Ok(result) => {
+                for password in result {
+                    passwords.push(password.name.clone());
+                }
+
+                Ok(passwords)
+            }
+            Err(err) => Err(VaultError::new(err.message)),
+        }
+    }
+
     pub fn generate_password(
         &mut self,
         password_request: PasswordRequest,

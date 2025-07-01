@@ -212,17 +212,16 @@ impl Vault {
     pub fn generate_password(
         &mut self,
         password_request: PasswordRequest,
-    ) -> Result<(), VaultError> {
+    ) -> Result<String, VaultError> {
         if self.locked {
             Err(VaultError::new(
                 "Cannot generate a password. Vault is locked.".to_string(),
             ))
         } else {
-            self.password_manager
+            Ok(self
+                .password_manager
                 .generate_password(password_request)
-                .map_err(|e| VaultError::new(format!("Could not generate password: {e}")))?;
-
-            Ok(())
+                .map_err(|e| VaultError::new(format!("Could not generate password: {e}")))?)
         }
     }
 
@@ -317,7 +316,7 @@ impl Manager {
         self.passwords.push(password);
     }
 
-    fn generate_password(&mut self, request: PasswordRequest) -> Result<(), std::io::Error> {
+    fn generate_password(&mut self, request: PasswordRequest) -> Result<String, std::io::Error> {
         let mut rng = rand::rng();
 
         let mut chars: Vec<char> = Vec::new();
@@ -350,16 +349,16 @@ impl Manager {
 
         chars.shuffle(&mut rng);
 
-        let password_string = chars.iter().collect();
+        let password_string: String = chars.iter().collect();
 
         let password = Password {
-            password: password_string,
+            password: password_string.clone(),
             name: request.name,
         };
 
         self.passwords.push(password);
 
-        Ok(())
+        Ok(password_string)
     }
 }
 

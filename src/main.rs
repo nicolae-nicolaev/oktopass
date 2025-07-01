@@ -152,10 +152,20 @@ fn main() {
                 Ok(_) => {
                     let options = prompt_password_options(service, length);
                     match vault.generate_password(options) {
-                        Ok(_) => match vault.save() {
-                            Ok(_) => {
-                                println!("✅ Password successfully generated and vault saved!");
-                            }
+                        Ok(password) => match vault.save() {
+                            Ok(_) => match copy_to_clipboard(password.as_str()) {
+                                Ok(_) => {
+                                    println!(
+                                        "✅ Password successfully generated and password copied to clipboard!"
+                                    );
+                                }
+                                Err(err) => {
+                                    eprintln!(
+                                        "⚠️ Password generated, however copying to clipboard failed: {err}"
+                                    );
+                                    std::process::exit(1);
+                                }
+                            },
                             Err(err) => {
                                 eprintln!("❗ Failed to save vault: {err}");
                                 std::process::exit(1);

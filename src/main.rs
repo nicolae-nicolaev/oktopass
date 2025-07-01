@@ -4,13 +4,13 @@ mod generators;
 mod password;
 
 use std::error::Error;
-use std::process;
 use std::io::{self, Write};
+use std::process;
 
 use clap::{Parser, Subcommand};
 use rpassword::prompt_password;
 
-use crate::password::{Vault, PasswordRequest};
+use crate::password::{PasswordRequest, Vault};
 
 #[derive(Parser, Debug)]
 #[command(name = "oktopass")]
@@ -23,30 +23,33 @@ struct Args {
 #[derive(Subcommand, Debug)]
 enum Commands {
     NewVault {
-        #[arg(long)]
+        #[arg(short, long)]
         name: String,
     },
     AddPass {
-        #[arg(long)]
+        #[arg(short, long)]
         vault_name: String,
 
-        #[arg(long)]
+        #[arg(short, long)]
         service: String,
     },
     GetPass {
-        #[arg(long)]
+        #[arg(short, long)]
         vault_name: String,
 
-        #[arg(long)]
+        #[arg(short, long)]
         service: String,
     },
     GenPass {
-        #[arg(long)]
+        #[arg(short, long)]
         vault_name: String,
 
-        #[arg(long)]
-        service: String,
-    }
+        #[arg(short, long)]
+        service: Option<String>,
+
+        #[arg(short, long)]
+        length: Option<usize>,
+    },
 }
 
 fn main() {
@@ -139,16 +142,20 @@ fn main() {
                 }
             }
         }
-        Commands::GenPass {vault_name, service} => {
+        Commands::GenPass {
+            vault_name,
+            service,
+            length,
+        } => {
             let mut vault = load_vault(&vault_name);
             match vault.unlock(&request_password("Enter vault master password: ")) {
                 Ok(_) => {
-                    let options = prompt_password_options();
+                    let options = prompt_password_options(service, length);
                     match vault.generate_password(options) {
                         Ok(_) => match vault.save() {
                             Ok(_) => {
                                 println!("✅ Password successfully generated and vault saved!");
-                            },
+                            }
                             Err(err) => {
                                 eprintln!("❗ Failed to save vault: {err}");
                                 std::process::exit(1);
@@ -159,7 +166,7 @@ fn main() {
                             std::process::exit(1);
                         }
                     }
-                },
+                }
                 Err(err) => {
                     eprintln!("❗ Error unlocking vault: {err}");
                     std::process::exit(1);
@@ -195,9 +202,7 @@ fn prompt_password_with_confirmation(prompt: &str, confirmation_prompt: &str) ->
     }
 }
 
-
-
-fn prompt_password_options() -> PasswordRequest {
+fn prompt_password_options(service: Option<String>, length: Option<usize>) -> PasswordRequest {
     fn prompt_password_name() -> String {
         print!("Enter password name (service): ");
         io::stdout().flush().unwrap();
@@ -207,6 +212,11 @@ fn prompt_password_options() -> PasswordRequest {
 
         input.trim().to_string()
     }
+
+    let name = match service {
+        Some(name) => name,
+        None => prompt_password_name(),
+    };
 
     fn prompt_password_length() -> usize {
         print!("Enter the desired password length (default 16): ");
@@ -218,6 +228,11 @@ fn prompt_password_options() -> PasswordRequest {
         input.trim().parse().unwrap_or(16)
     }
 
+    let length = match length {
+        Some(name) => name,
+        None => prompt_password_length(),
+    };
+
     fn ask(prompt: &str) -> bool {
         print!("{prompt} (y/n): ");
         io::stdout().flush().unwrap();
@@ -228,12 +243,12 @@ fn prompt_password_options() -> PasswordRequest {
     }
 
     PasswordRequest {
-        name: prompt_password_name(),
-        length: prompt_password_length(),
+        name,
+        length,
         lowercase: ask("Include lowercase letters?"),
         uppercase: ask("Include uppercase letters?"),
-        numbers:   ask("Include numbers?"),
-        specials:  ask("Include special characters?"),
+        numbers: ask("Include numbers?"),
+        specials: ask("Include special characters?"),
     }
 }
 

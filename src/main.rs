@@ -29,21 +29,21 @@ enum Commands {
     ShowVaults,
     AddPass {
         #[arg(short, long)]
-        vault_name: String,
+        vault: String,
 
         #[arg(short, long)]
         service: String,
     },
     GetPass {
         #[arg(short, long)]
-        vault_name: String,
+        vault: String,
 
         #[arg(short, long)]
         service: String,
     },
     GenPass {
         #[arg(short, long)]
-        vault_name: String,
+        vault: String,
 
         #[arg(short, long)]
         service: Option<String>,
@@ -51,9 +51,9 @@ enum Commands {
         #[arg(short, long)]
         length: Option<usize>,
     },
-    ShowPass {
+    ShowServ {
         #[arg(short, long)]
-        vault_name: String,
+        vault: String,
     },
 }
 
@@ -83,12 +83,11 @@ fn main() {
                 }
             }
         }
-        Commands::ShowVaults => {}
-        Commands::AddPass {
-            vault_name,
-            service,
-        } => {
-            let mut vault = load_vault(&vault_name);
+        Commands::ShowVaults => {
+            todo!("❗ Not implemented yet!");
+        }
+        Commands::AddPass { vault, service } => {
+            let mut vault = load_vault(&vault);
 
             match vault.unlock(&request_password("Enter vault master password: ")) {
                 Ok(_) => {
@@ -125,11 +124,8 @@ fn main() {
                 }
             }
         }
-        Commands::GetPass {
-            vault_name,
-            service,
-        } => {
-            let mut vault = load_vault(&vault_name);
+        Commands::GetPass { vault, service } => {
+            let mut vault = load_vault(&vault);
 
             match vault.unlock(&request_password("Enter vault master password: ")) {
                 Ok(_) => match vault.get_password(&service) {
@@ -149,11 +145,11 @@ fn main() {
             }
         }
         Commands::GenPass {
-            vault_name,
+            vault,
             service,
             length,
         } => {
-            let mut vault = load_vault(&vault_name);
+            let mut vault = load_vault(&vault);
             match vault.unlock(&request_password("Enter vault master password: ")) {
                 Ok(_) => {
                     let options = prompt_password_options(service, length);
@@ -189,8 +185,8 @@ fn main() {
                 }
             }
         }
-        Commands::ShowPass { vault_name } => {
-            let mut vault = load_vault(vault_name.as_str());
+        Commands::ShowServ { vault } => {
+            let mut vault = load_vault(vault.as_str());
             match vault.unlock(&request_password("Enter vault master password: ")) {
                 Ok(_) => {
                     let passwords = vault

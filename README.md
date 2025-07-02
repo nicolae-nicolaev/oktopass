@@ -41,10 +41,10 @@ You will be prompted to enter and confirm the master password.
 Add a password to an existing vault.
 
 ```bash
-oktopass add-pass --vault-name <vault_name> --service <service_name>
+oktopass add-pass --vault <vault_name> --service <service_name>
 ```
 
-You will be prompted to unlock the vault and enter a new password for the service.
+You will be prompted to unlock the vault with the master password and enter a new password for the service.
 
 ---
 
@@ -53,10 +53,10 @@ You will be prompted to unlock the vault and enter a new password for the servic
 Retrieve a password from a vault and copy it to your clipboard.
 
 ```bash
-oktopass get-pass --vault-name <vault_name> --service <service_name>
+oktopass get-pass --vault <vault_name> --service <service_name>
 ```
 
-You will be prompted to unlock the vault. If successful, the password will be copied to the clipboard.
+You will be prompted to unlock the vault with the master password. If successful, the password will be copied to the clipboard.
 
 ---
 
@@ -65,10 +65,28 @@ You will be prompted to unlock the vault. If successful, the password will be co
 Generate a new secure password and add it to a vault.
 
 ```bash
-oktopass gen-pass --vault-name <vault_name> --service <service_name>
+oktopass gen-pass --vault <vault_name>
 ```
 
-You will be prompted to unlock the vault and provide password generation options (length, character sets, etc.).
+You will be prompted to unlock the vault with the master password and provide password generation options (service, length, character sets, etc.).
+
+Service and length arguments can also be provided in the command.
+
+```bash
+oktopass gen-pass --vault-name <vault-name> --service <service> --length <length>
+```
+
+---
+
+#### 👀 `show-serv`
+
+Show the services password available in a vault.
+
+```bash
+oktopass show-serv --vault <vault>
+```
+
+You will be prompted to unlock the vault with the master password. If successful, the list of services available in the vault will be shown.
 
 ---
 
@@ -85,3 +103,4 @@ You will be prompted to unlock the vault and provide password generation options
 git clone https://github.com/nicolae-nicolaev/oktopass.git
 cd oktopass
 ./install.sh
+```
